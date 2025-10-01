@@ -8,3 +8,4 @@ python-dotenv
 rapidfuzz
 pandas
 json_repair==0.19.1
+markdown
