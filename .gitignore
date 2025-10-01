@@ -1,0 +1,48 @@
+# Python cache and bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+env/
+.venv/
+.env/
+.embeddings/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# CSV, Excel, and data files
+*.csv
+*.xlsx
+*.xls
+*.tsv
+
+# PDF files
+*.pdf
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+
+# Optional: Python egg files
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Optional: other data files you don't want
+*.json
+*.parquet
+*.h5
+
+#folders
+data/
