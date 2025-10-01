@@ -1,6 +1,7 @@
 from io import BytesIO
 import streamlit as st
 import warnings
+import time
 import markdown
 import streamlit.components.v1 as components
 from scripts.pipeline import process_transcript
@@ -28,12 +29,20 @@ if "generated_summary" not in st.session_state:
 if "processed_docs" not in st.session_state:
     st.session_state["processed_docs"] = set()
 
-
 # ---------- Caching Layer ----------
 @st.cache_resource(show_spinner="Processing transcript…")
 def cached_process_transcript(file_bytes: bytes, file_name: str):
     """Wrap bytes in BytesIO for process_transcript."""
     return process_transcript(BytesIO(file_bytes), chunk_size=500, overlap=50)
+
+# 2️⃣ Refresh logic right below the function
+if "last_refresh" not in st.session_state:
+    st.session_state.last_refresh = time.time()
+
+print(time.time() - st.session_state.last_refresh)
+if time.time() - st.session_state.last_refresh > 600:  # 30 mins
+    st.cache_resource.clear()
+    st.session_state.last_refresh = time.time()
 
 # ---------- Utility ----------
 def _get_selected_data():
@@ -247,6 +256,12 @@ with opening_tab:
             selected = []
             doc_id = st.session_state.get("selected_doc_id", "no_doc")
 
+            # Ensure generated_summary dict exists and is nested by doc_id
+            if "generated_summary" not in st.session_state:
+                st.session_state["generated_summary"] = {}
+            if doc_id not in st.session_state["generated_summary"]:
+                st.session_state["generated_summary"][doc_id] = {}
+
             # Step 1: Display checkboxes for each topic
             for idx, item in enumerate(items):
                 key = f"sel_{doc_id}_{section_name}_{idx}"
@@ -266,19 +281,13 @@ with opening_tab:
                         for para in paragraphs:
                             formatted_summary += f"{para}\n\n\n\n"
 
-                    # Store it so it survives reruns
-                    if "generated_summary" not in st.session_state:
-                        st.session_state["generated_summary"] = {}
-
-                    if doc_id not in st.session_state["generated_summary"]:
-                        st.session_state["generated_summary"][doc_id] = {}
-
+                    # Store summary under doc_id + section_name
                     st.session_state["generated_summary"][doc_id][section_name] = formatted_summary.strip()
 
             # Step 3: Display the stored summary (if any)
-            if doc_id in st.session_state["generated_summary"]:
-                if section_name in st.session_state["generated_summary"][doc_id]:
-                    _display_answer_card(st.session_state["generated_summary"][doc_id][section_name])
+            if section_name in st.session_state["generated_summary"].get(doc_id, {}):
+                _display_answer_card(st.session_state["generated_summary"][doc_id][section_name])
+
 
 # ---------------- Q&A Tab ----------------
 with qa_tab:
@@ -329,6 +338,12 @@ with qa_tab:
             selected = []
             doc_id = st.session_state.get("selected_doc_id", "no_doc")
 
+            # Ensure generated_summary dict exists and is nested by doc_id
+            if "generated_summary" not in st.session_state:
+                st.session_state["generated_summary"] = {}
+            if doc_id not in st.session_state["generated_summary"]:
+                st.session_state["generated_summary"][doc_id] = {}
+
             # Step 1: Display checkboxes for each topic
             for idx, item in enumerate(items):
                 key = f"sel_{doc_id}_{section_name}_{idx}"
@@ -336,7 +351,7 @@ with qa_tab:
                     selected.append(item)
 
             # Step 2: Generate button
-            if st.button("Generate Summary", key=f"gen_sum_{section_name}"):
+            if st.button("Generate Summary", key=f"gen_sum_{doc_id}_{section_name}"):
                 if not selected:
                     st.warning("Select at least one topic.")
                 else:
@@ -348,12 +363,13 @@ with qa_tab:
                         for para in paragraphs:
                             formatted_summary += f"{para}\n\n\n\n"
 
-                    # Store it so it survives reruns
-                    st.session_state["generated_summary"][section_name] = formatted_summary.strip()
+                    # Store summary under doc_id + section_name
+                    st.session_state["generated_summary"][doc_id][section_name] = formatted_summary.strip()
 
             # Step 3: Display the stored summary (if any)
-            if section_name in st.session_state["generated_summary"]:
-                _display_answer_card(st.session_state["generated_summary"][section_name])
+            if section_name in st.session_state["generated_summary"].get(doc_id, {}):
+                _display_answer_card(st.session_state["generated_summary"][doc_id][section_name])
+
 
 # ---------------- Chat Assistant Tab ----------------
 with chat_tab:
@@ -380,7 +396,7 @@ with chat_tab:
                     st.session_state[f"chat_input_{doc_id}"] = q
                     st.session_state["auto_scroll_answer"] = True
                     st.rerun()
-        question = st.text_input("Ask a question", key=f"chat_input_{doc_id}")
+        question = st.text_input("Ask a question", key=f"chat_input_{doc_id}" , placeholder="Type your question here...")
         if question:
             cache_key = f"{doc_id}::{question.strip().lower()}"
             if cache_key in st.session_state["qa_cache"]:
