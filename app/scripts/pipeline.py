@@ -59,10 +59,6 @@ if os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT"):
 else:
     EMBEDDING_MODEL = st.secrets.get("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "text-embedding-3-large")
 
-# CACHE_BASE = st.secrets.get("EMBEDDINGS_CACHE_DIR", os.path.join(os.path.dirname(os.path.dirname(__file__)), "..", "data"))
-# CACHE_BASE = os.path.abspath(CACHE_BASE)
-# os.makedirs(CACHE_BASE, exist_ok=True)
-
 if not AZURE_OPENAI_API_KEY:
     raise RuntimeError("AZURE_OPENAI_API_KEY is not set in the environment.")
 
@@ -94,30 +90,6 @@ def process_transcript(pdf_file, chunk_size=500, overlap=50):
     pdf_file.seek(0)
     print("PDF Read Completed")
     doc_id = compute_doc_id(file_bytes)
-    # cache_dir = get_cache_dir(CACHE_BASE, doc_id)
-
-    # Fast-path: load from cache if available
-    # if has_cached_artifacts(cache_dir):
-    #     sections = load_json(path_in_cache(cache_dir, "sections.json"))
-    #     chunks = load_json(path_in_cache(cache_dir, "chunks.json"))
-    #     prelim_summary = load_json(path_in_cache(cache_dir, "summary.json"))
-    #     topics_summaries = load_json(path_in_cache(cache_dir, "topics_summaries.json"))
-    #     topics_items = load_json(path_in_cache(cache_dir, "topics_items.json"))
-    #     index = load_faiss(path_in_cache(cache_dir, "faiss.index"))
-    #     return {
-    #         "doc_id": doc_id,
-    #         "cache_hit": True,
-    #         "sections": sections,
-    #         "summary": prelim_summary,
-    #         "chunks": chunks,
-    #         "topics_summaries": topics_summaries,
-    #         "topics_items": topics_items,
-    #         "faiss_index": index,
-    #         "embedding_client": embedding_client,
-    #         "chat_client": chat_client,
-    #         "chat_model": CHAT_MODEL,
-    #         "embedding_model": EMBEDDING_MODEL
-    #     }
 
     # Step 1: Extract text
     transcript_lines = extract_pdf_text(pdf_file)  # returns list of dict lines
@@ -148,7 +120,6 @@ def process_transcript(pdf_file, chunk_size=500, overlap=50):
     print("Chunks Created")
 
     # Step 4.5: Initial document metadata (for management participants) after chunking but before index
-    # Build a temporary minimal index for robust field extraction
     embeddings = embed_text([chunk["text"] for chunk in all_chunks], client=embedding_client)
     index = build_faiss_index(embeddings)
     prelim_summary = extract_document_metadata(transcript_lines, all_chunks, index, embedding_client, chat_client)
@@ -183,16 +154,6 @@ def process_transcript(pdf_file, chunk_size=500, overlap=50):
         topics_items[section_name] = items
         
     print("Topics and Summaries Generated")
-
-
-    # Save to cache
-    # save_json(path_in_cache(cache_dir, "sections.json"), sections)
-    # save_json(path_in_cache(cache_dir, "chunks.json"), all_chunks)
-    # save_json(path_in_cache(cache_dir, "summary.json"), prelim_summary)
-    # save_json(path_in_cache(cache_dir, "topics_summaries.json"), topics_summaries)
-    # save_json(path_in_cache(cache_dir, "topics_items.json"), topics_items)
-    # save_faiss(path_in_cache(cache_dir, "faiss.index"), index)
-    # print("Cache Saved")
 
     # Return full processed structure
     return {
