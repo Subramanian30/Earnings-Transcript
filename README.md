@@ -90,8 +90,4 @@ streamlit run app/streamlit_app.py
 ## Notes
 
 * Make sure your virtual environment is activated before running the app.
-<<<<<<< HEAD
 * Ensure that all environment variables are correctly set in the `.env` file.
-=======
-* Ensure that all environment variables are correctly set in the `.env` file.
->>>>>>> a3b9d6c (latest changes)
