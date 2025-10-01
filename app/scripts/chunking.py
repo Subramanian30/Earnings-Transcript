@@ -12,11 +12,11 @@ def speaker_level_chunks(lines, section=None, start_chunk_id=0, global_state=Non
     Additional logic:
     - Track if moderator appears across sections.
     - Track the very first speaker (before moderator).
-    - If moderator never appears, drop ALL contributions from that speaker.
-    - Remove any speaker who ever says "First question".
+    - If moderator never appears, drop ALL contributions from that speaker,
+      even in other sections (Opening Remarks, Q&A, etc.).
     """
     if global_state is None:
-        global_state = {"moderator_found": False, "first_speaker": None, "exclude_speakers": set()}
+        global_state = {"moderator_found": False, "first_speaker": None}
 
     merged = []
     current_speaker = None
@@ -44,16 +44,9 @@ def speaker_level_chunks(lines, section=None, start_chunk_id=0, global_state=Non
             if global_state["first_speaker"] is None:
                 global_state["first_speaker"] = speaker
 
-            # If speaker says "First question", mark them for exclusion
-            if "first question" in text.lower():
-                global_state["exclude_speakers"].add(speaker)
-                continue
-
-            # Save the previous speaker paragraph if valid and not excluded
+            # Save the previous speaker paragraph if valid
             if current_para and current_speaker not in (None, "Unknown"):
-                if current_speaker not in global_state["exclude_speakers"] and not (
-                    not global_state["moderator_found"] and current_speaker == global_state["first_speaker"]
-                ):
+                if not (not global_state["moderator_found"] and current_speaker == global_state["first_speaker"]):
                     merged.append({
                         "chunk_id": f"{section}_{chunk_id}" if section else chunk_id,
                         "speaker": current_speaker,
@@ -76,13 +69,14 @@ def speaker_level_chunks(lines, section=None, start_chunk_id=0, global_state=Non
                 current_para.append(text_after)
 
         else:
-            # Not a new speaker line → append only if inside a known speaker and not excluded
-            if current_speaker not in (None, "Unknown") and current_speaker not in global_state["exclude_speakers"]:
+            # Not a new speaker line → append only if inside a known speaker
+            if current_speaker not in (None, "Unknown"):
                 current_para.append(text)
                 end_page, end_line = page, line_no
+            # else: ignore (before first speaker)
 
     # Save last paragraph if valid
-    if current_para and current_speaker not in (None, "Unknown") and current_speaker not in global_state["exclude_speakers"]:
+    if current_para and current_speaker not in (None, "Unknown"):
         if not (not global_state["moderator_found"] and current_speaker == global_state["first_speaker"]):
             merged.append({
                 "chunk_id": f"{section}_{chunk_id}" if section else chunk_id,

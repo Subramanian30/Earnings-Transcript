@@ -1,30 +1,60 @@
 import faiss
 from scripts.embedding_faiss import embed_text
 
-def query_index(question, index, chunks, client, top_k=5):
+def query_index(question, index, chunks, client, top_k=5, context_window=2):
     question = (question or "").strip()
     if not question:
         return []
+
+    # Embed the question
     q_emb = embed_text([question], client=client)
     faiss.normalize_L2(q_emb)
+
+    # Search FAISS index
     D, I = index.search(q_emb, top_k)
-    results = []
+
+    # Build context ranges
+    ranges = []
     for score, idx in zip(D[0], I[0]):
         if 0 <= idx < len(chunks):
-            c = chunks[idx]
-            results.append({
-                "score": float(score),
-                "chunk_id": c.get("chunk_id"),
-                "text": c.get("text", ""),
-                "start_page": c.get("start_page"),
-                "start_line": c.get("start_line"),
-                "end_page": c.get("end_page"),
-                "end_line": c.get("end_line"),
-                "section": c.get("section"),
-                "speaker": c.get("speaker"),
-                "role": c.get("role"),
-            })
-    return results
+            start = max(0, idx - context_window)
+            end = min(len(chunks), idx + context_window + 1)
+            ranges.append((start, end, float(score)))
+
+    # Sort ranges by start
+    ranges.sort()
+
+    # Merge overlapping ranges
+    merged = []
+    for start, end, score in ranges:
+        if not merged or start > merged[-1]["end"]:
+            merged.append({"start": start, "end": end, "score": score})
+        else:
+            # Merge overlapping
+            merged[-1]["end"] = max(merged[-1]["end"], end)
+            merged[-1]["score"] = max(merged[-1]["score"], score)  # take max score
+
+    # Build final results
+    results = []
+    for m in merged:
+        text = " ".join(chunks[i]["text"] for i in range(m["start"], m["end"]))
+        first_chunk = chunks[m["start"]]
+        last_chunk = chunks[m["end"] - 1]
+        results.append({
+            "score": m["score"],
+            "chunk_id": [chunks[i].get("chunk_id") for i in range(m["start"], m["end"])],
+            "text": text,
+            "start_page": first_chunk.get("start_page"),
+            "start_line": first_chunk.get("start_line"),
+            "end_page": last_chunk.get("end_page"),
+            "end_line": last_chunk.get("end_line"),
+            "section": first_chunk.get("section"),
+            "speaker": first_chunk.get("speaker"),
+            "role": first_chunk.get("role"),
+        })
+
+    results = sorted(results, key=lambda x: x["score"], reverse=True)
+    return results[:top_k]
 
 def _format_answer(answer_text, retrieved):
     answer_text = (answer_text or "").strip()
@@ -51,9 +81,8 @@ def generate_answer(question, retrieved_chunks, client, model="gpt-4o"):
     ])
     prompt = f"""
     You are a careful assistant. Answer the question strictly using the context.
-    - If the answer is not in the context, reply: "I don't have enough information in the transcript to answer."
     - Keep the answer concise (4-5 sentences), factual, and avoid fabrications.
-    - Do not mention being an AI model.
+    - Do not mention being an AI model and Don't hallucinate new stuff.
 
     Context:
     {context_text}

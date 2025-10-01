@@ -23,15 +23,42 @@ load_dotenv()
 # --------------------------
 # Initialize clients from environment
 # --------------------------
-import streamlit as st
-import os
+# API Key
+if os.getenv("AZURE_OPENAI_API_KEY"):
+    AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
+else:
+    AZURE_OPENAI_API_KEY = st.secrets["AZURE_OPENAI_API_KEY"]
 
-AZURE_OPENAI_API_KEY = st.secrets["AZURE_OPENAI_API_KEY"]
-AZURE_OPENAI_ENDPOINT = st.secrets.get("AZURE_OPENAI_ENDPOINT", "https://agents-general.openai.azure.com")
-AZURE_OPENAI_CHAT_COMPLETION_VERSION = st.secrets.get("AZURE_OPENAI_CHAT_COMPLETION_VERSION", "2024-08-01-preview")
-AZURE_OPENAI_EMBEDDINGS_VERSION = st.secrets.get("AZURE_OPENAI_EMBEDDINGS_VERSION", "2023-05-15")
-CHAT_MODEL = st.secrets.get("AZURE_OPENAI_CHAT_DEPLOYMENT", "gpt-4o")
-EMBEDDING_MODEL = st.secrets.get("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "text-embedding-3-large")
+# Endpoint
+if os.getenv("AZURE_OPENAI_ENDPOINT"):
+    AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
+else:
+    AZURE_OPENAI_ENDPOINT = st.secrets.get("AZURE_OPENAI_ENDPOINT", "https://agents-general.openai.azure.com")
+
+# Chat Completion Version
+if os.getenv("AZURE_OPENAI_CHAT_COMPLETION_VERSION"):
+    AZURE_OPENAI_CHAT_COMPLETION_VERSION = os.getenv("AZURE_OPENAI_CHAT_COMPLETION_VERSION")
+else:
+    AZURE_OPENAI_CHAT_COMPLETION_VERSION = st.secrets.get("AZURE_OPENAI_CHAT_COMPLETION_VERSION", "2024-08-01-preview")
+
+# Embeddings Version
+if os.getenv("AZURE_OPENAI_EMBEDDINGS_VERSION"):
+    AZURE_OPENAI_EMBEDDINGS_VERSION = os.getenv("AZURE_OPENAI_EMBEDDINGS_VERSION")
+else:
+    AZURE_OPENAI_EMBEDDINGS_VERSION = st.secrets.get("AZURE_OPENAI_EMBEDDINGS_VERSION", "2023-05-15")
+
+# Chat Model
+if os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"):
+    CHAT_MODEL = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT")
+else:
+    CHAT_MODEL = st.secrets.get("AZURE_OPENAI_CHAT_DEPLOYMENT", "gpt-4o")
+
+# Embedding Model
+if os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT"):
+    EMBEDDING_MODEL = os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT")
+else:
+    EMBEDDING_MODEL = st.secrets.get("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "text-embedding-3-large")
+
 # CACHE_BASE = st.secrets.get("EMBEDDINGS_CACHE_DIR", os.path.join(os.path.dirname(os.path.dirname(__file__)), "..", "data"))
 # CACHE_BASE = os.path.abspath(CACHE_BASE)
 # os.makedirs(CACHE_BASE, exist_ok=True)
@@ -122,9 +149,10 @@ def process_transcript(pdf_file, chunk_size=500, overlap=50):
 
     # Step 4.5: Initial document metadata (for management participants) after chunking but before index
     # Build a temporary minimal index for robust field extraction
-    tmp_embeddings = embed_text([chunk["text"] for chunk in all_chunks], client=embedding_client)
-    tmp_index = build_faiss_index(tmp_embeddings)
-    prelim_summary = extract_document_metadata(transcript_lines, all_chunks, tmp_index, embedding_client, chat_client)
+    embeddings = embed_text([chunk["text"] for chunk in all_chunks], client=embedding_client)
+    index = build_faiss_index(embeddings)
+    prelim_summary = extract_document_metadata(transcript_lines, all_chunks, index, embedding_client, chat_client)
+    print("FAISS Index Built")
 
     # Use participants list to mark management speakers
     management_names = set()
@@ -133,9 +161,6 @@ def process_transcript(pdf_file, chunk_size=500, overlap=50):
         name = p.split(",")[0].strip()
         if name:
             management_names.add(name.lower())
-
-    # Filter out moderator lines were already skipped during chunking; now set roles by rule
-    print(management_names)
 
     for c in all_chunks:
         spk = (c.get("speaker") or "").lower()
@@ -156,41 +181,9 @@ def process_transcript(pdf_file, chunk_size=500, overlap=50):
         topics_summaries[section_name] = block
         items = parse_topics_block(block)
         topics_items[section_name] = items
+        
     print("Topics and Summaries Generated")
 
-    # Step 5: Embed chunks and build FAISS index
-    embeddings = embed_text([chunk["text"] for chunk in all_chunks], client=embedding_client)
-    index = build_faiss_index(embeddings)
-    print("FAISS Index Built")
-
-    # Step 8: Per-topic provenance using index (map each topic+summary to top chunks)
-    per_topic_sources = {}
-    for section_name, items in topics_items.items():
-        section_sources = []
-        for item in items:
-            q = f"{item.get('topic','')}. {item.get('summary','')}".strip()
-            if not q:
-                section_sources.append([])
-                continue
-            q_emb = embed_text([q], client=embedding_client)
-            faiss.normalize_L2(q_emb)
-            D, I = index.search(q_emb, 3)
-            topic_results = []
-            for score, idx_i in zip(D[0], I[0]):
-                if 0 <= idx_i < len(all_chunks):
-                    c = all_chunks[idx_i]
-                    if (c.get("role") or "").lower() == "moderator":
-                        continue
-                    topic_results.append({
-                        "chunk_id": c.get("chunk_id"),
-                        "score": float(score),
-                        "start_page": c.get("start_page"),
-                        "start_line": c.get("start_line"),
-                        "end_page": c.get("end_page"),
-                        "end_line": c.get("end_line"),
-                    })
-            section_sources.append(topic_results)
-        per_topic_sources[section_name] = section_sources
 
     # Save to cache
     # save_json(path_in_cache(cache_dir, "sections.json"), sections)

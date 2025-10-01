@@ -1,18 +1,18 @@
+from io import BytesIO
 import streamlit as st
-import os
+import warnings
+import markdown
+import streamlit.components.v1 as components
 from scripts.pipeline import process_transcript
 from scripts.rag_query import query_index, generate_answer
-import warnings
-import streamlit.components.v1 as components
-import markdown 
-warnings.filterwarnings("ignore")
 
+warnings.filterwarnings("ignore")
 st.set_page_config(page_title="📄 Transcript Assistant", layout="wide")
 st.title("📄 Transcript Assistant")
 
 # ---------- Initialize Session State ----------
 if "docs" not in st.session_state:
-    st.session_state["docs"] = []  # [{id, name, status: Processed|Error, data}]
+    st.session_state["docs"] = []
 if "selected_doc_id" not in st.session_state:
     st.session_state["selected_doc_id"] = None
 if "qa_cache" not in st.session_state:
@@ -21,9 +21,43 @@ if "focus_summary" not in st.session_state:
     st.session_state["focus_summary"] = False
 if "auto_scroll_answer" not in st.session_state:
     st.session_state["auto_scroll_answer"] = False
+if "generated_summary" not in st.session_state:
+    st.session_state["generated_summary"] = {}  # store summaries keyed by section
+
+# Track which docs are processed
+if "processed_docs" not in st.session_state:
+    st.session_state["processed_docs"] = set()
 
 
-# Cards
+# ---------- Caching Layer ----------
+@st.cache_resource(show_spinner="Processing transcript…")
+def cached_process_transcript(file_bytes: bytes, file_name: str):
+    """Wrap bytes in BytesIO for process_transcript."""
+    return process_transcript(BytesIO(file_bytes), chunk_size=500, overlap=50)
+
+# ---------- Utility ----------
+def _get_selected_data():
+    doc_id = st.session_state.get("selected_doc_id")
+    if not doc_id:
+        return None
+
+    doc = next((d for d in st.session_state["docs"] if d["id"] == doc_id), None)
+    if not doc:
+        return None
+
+    # Only process if not already done
+    if doc_id not in st.session_state["processed_docs"]:
+        if doc.get("file") is not None:
+            try:
+                doc["data"] = cached_process_transcript(doc["file"].getvalue(), doc["file"].name)
+                doc["status"] = "Processed"
+                st.session_state["processed_docs"].add(doc_id)
+            except Exception as e:
+                doc["status"] = "Error"
+                doc["error_msg"] = str(e)
+    return doc
+
+# ---------- Display Helpers ----------
 def _display_chunk_card(c, section_name, idx):
     speaker = c.get("speaker") or "Unknown"
     label = f"{speaker}"
@@ -38,25 +72,12 @@ def _display_chunk_card(c, section_name, idx):
         )
 
 def _display_answer_card(ans_text):
-    # Convert Markdown to HTML
     html_content = markdown.markdown(ans_text, extensions=['extra', 'nl2br'])
-    
-    # Wrap in styled div
     st.markdown(
         f"<div style='background:#effaf1; color:#0b4d1a; padding:16px; "
-        f"border-radius:12px; border:1px solid #cde9d6; word-wrap:break-word;'>"
-        f"{html_content}</div>",
+        f"border-radius:12px; border:1px solid #cde9d6; word-wrap:break-word;'>{html_content}</div>",
         unsafe_allow_html=True
     )
-
-
-# ---------- Utility ----------
-def _get_selected_data():
-    doc_id = st.session_state.get("selected_doc_id")
-    for d in st.session_state["docs"]:
-        if d.get("id") == doc_id:
-            return d
-    return None
 
 # ---------- Top Navigation ----------
 selected_doc = _get_selected_data()
@@ -79,35 +100,38 @@ opening_tab = label_to_tab[label_open]
 qa_tab = label_to_tab[label_qna]
 chat_tab = label_to_tab[label_chat]
 
-# ---------------- Upload Tab ----------------
 with upload_tab:
     st.subheader("Upload a PDF Transcript")
     uploaded_file = st.file_uploader("Choose a PDF", type=["pdf"], key="upload_tab")
     if uploaded_file is not None:
-        with st.spinner("Processing PDF..."):
-            try:
-                data = process_transcript(uploaded_file, chunk_size=500, overlap=50)
-                doc_id = f"local::{uploaded_file.name}"
-                # Update or insert
-                found = None
-                for d in st.session_state["docs"]:
-                    if d.get("id") == doc_id:
-                        found = d
-                        break
-                if found:
-                    found.update({"name": uploaded_file.name, "status": "Processed", "data": data})
-                else:
-                    st.session_state["docs"].append({
-                        "id": doc_id,
-                        "name": uploaded_file.name,
-                        "status": "Processed",
-                        "data": data
-                    })
-                st.session_state["selected_doc_id"] = doc_id
-                st.session_state["focus_summary"] = True
-                st.success("Processing complete. Summary is now available.")
-            except Exception as e:
-                st.error(f"Failed to process file: {e}")
+        doc_id = f"local::{uploaded_file.name}"
+        found = next((d for d in st.session_state["docs"] if d.get("id") == doc_id), None)
+        if not found:
+            found = {
+                "id": doc_id,
+                "name": uploaded_file.name,
+                "file": uploaded_file,
+                "status": "NotProcessed",
+                "data": None,
+            }
+            st.session_state["docs"].append(found)
+        else:
+            found["file"] = uploaded_file
+            found["status"] = "NotProcessed"
+            found["data"] = None
+        st.session_state["selected_doc_id"] = doc_id
+
+        if found["status"] != "Processed":
+            with st.spinner("Extracting text and building index…"):
+                try:
+                    data = cached_process_transcript(uploaded_file.getvalue(), uploaded_file.name)
+                    found["data"] = data
+                    found["status"] = "Processed"
+                    st.success("Processed ✅. Move to Summary tab.")
+                except Exception as e:
+                    found["status"] = "Error"
+                    found["error_msg"] = str(e)
+                    st.error(f"Failed to process file: {e}")
 
 # ---------------- Summary Tab ----------------
 with summary_tab:
@@ -218,24 +242,43 @@ with opening_tab:
                         unsafe_allow_html=True
                     )
 
-        with tab3:
+        with tab3:  # "Create Summaries" tab
             items = data.get("topics_items", {}).get(section_name, [])
             selected = []
+            doc_id = st.session_state.get("selected_doc_id", "no_doc")
+
+            # Step 1: Display checkboxes for each topic
             for idx, item in enumerate(items):
-                key = f"sel_{section_name}_{idx}"
+                key = f"sel_{doc_id}_{section_name}_{idx}"
                 if st.checkbox(item.get("topic", f"Topic {idx+1}"), key=key):
                     selected.append(item)
-            if st.button("Generate Summary", key="gen_sum_opening"):
+
+            # Step 2: Generate button
+            if st.button("Generate Summary", key=f"gen_sum_{doc_id}_{section_name}"):
                 if not selected:
                     st.warning("Select at least one topic.")
                 else:
+                    # Build summary from selected topics
                     formatted_summary = ""
                     for it in selected:
                         summary = it.get("summary", "")
                         paragraphs = [p.strip() for p in summary.split("\n\n") if p.strip()]
                         for para in paragraphs:
                             formatted_summary += f"{para}\n\n\n\n"
-                    _display_answer_card(formatted_summary.strip())
+
+                    # Store it so it survives reruns
+                    if "generated_summary" not in st.session_state:
+                        st.session_state["generated_summary"] = {}
+
+                    if doc_id not in st.session_state["generated_summary"]:
+                        st.session_state["generated_summary"][doc_id] = {}
+
+                    st.session_state["generated_summary"][doc_id][section_name] = formatted_summary.strip()
+
+            # Step 3: Display the stored summary (if any)
+            if doc_id in st.session_state["generated_summary"]:
+                if section_name in st.session_state["generated_summary"][doc_id]:
+                    _display_answer_card(st.session_state["generated_summary"][doc_id][section_name])
 
 # ---------------- Q&A Tab ----------------
 with qa_tab:
@@ -281,27 +324,43 @@ with qa_tab:
                         unsafe_allow_html=True
                     )
 
-        with tab3:
+        with tab3:  # "Create Summaries" tab
             items = data.get("topics_items", {}).get(section_name, [])
             selected = []
+            doc_id = st.session_state.get("selected_doc_id", "no_doc")
+
+            # Step 1: Display checkboxes for each topic
             for idx, item in enumerate(items):
-                key = f"sel_{section_name}_{idx}"
+                key = f"sel_{doc_id}_{section_name}_{idx}"
                 if st.checkbox(item.get("topic", f"Topic {idx+1}"), key=key):
                     selected.append(item)
-            if st.button("Generate Summary", key="gen_sum_qa"):
+
+            # Step 2: Generate button
+            if st.button("Generate Summary", key=f"gen_sum_{section_name}"):
                 if not selected:
                     st.warning("Select at least one topic.")
                 else:
+                    # Build summary from selected topics
                     formatted_summary = ""
                     for it in selected:
                         summary = it.get("summary", "")
                         paragraphs = [p.strip() for p in summary.split("\n\n") if p.strip()]
                         for para in paragraphs:
                             formatted_summary += f"{para}\n\n\n\n"
-                    _display_answer_card(formatted_summary.strip())
+
+                    # Store it so it survives reruns
+                    st.session_state["generated_summary"][section_name] = formatted_summary.strip()
+
+            # Step 3: Display the stored summary (if any)
+            if section_name in st.session_state["generated_summary"]:
+                _display_answer_card(st.session_state["generated_summary"][section_name])
 
 # ---------------- Chat Assistant Tab ----------------
 with chat_tab:
+    doc_id = st.session_state.get("selected_doc_id")
+    if not doc_id:
+        st.info("Please upload a document.")
+        st.stop()
     sel = _get_selected_data()
     if not sel or sel.get("status") != "Processed":
         st.info("Please upload a document.")
@@ -318,17 +377,21 @@ with chat_tab:
         with st.expander("Suggested Questions"):
             for idx, q in enumerate(sample_qs):
                 if st.button(q, key=f"suggest_q_{idx}"):
-                    st.session_state["chat_input"] = q
+                    st.session_state[f"chat_input_{doc_id}"] = q
                     st.session_state["auto_scroll_answer"] = True
                     st.rerun()
-        question = st.text_input("Ask a question", key="chat_input")
+        question = st.text_input("Ask a question", key=f"chat_input_{doc_id}")
         if question:
-            cache_key = f"{data.get('doc_id')}::{question.strip().lower()}"
+            cache_key = f"{doc_id}::{question.strip().lower()}"
             if cache_key in st.session_state["qa_cache"]:
                 retrieved, ans = st.session_state["qa_cache"][cache_key]
             else:
                 with st.spinner("Retrieving context and generating answer..."):
                     pool = data["chunks"]
+                    pool = [c for c in pool if c.get("role","").lower() == "answer"]
+
+                    print(len(pool))
+
                     retrieved = query_index(question, data["faiss_index"], pool, client=data["embedding_client"])
                     ans = generate_answer(question, retrieved, client=data["chat_client"], model=data.get("chat_model", "gpt-4o"))
                 st.session_state["qa_cache"][cache_key] = (retrieved, ans)
