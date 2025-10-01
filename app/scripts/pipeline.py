@@ -1,5 +1,6 @@
 from dotenv import load_dotenv
 import os
+import streamlit as st
 from scripts.extract_text import extract_pdf_text
 from scripts.chunking import chunk_metadata , speaker_level_chunks
 from scripts.section_split import split_transcript_metadata_opening_qa
@@ -22,13 +23,16 @@ load_dotenv()
 # --------------------------
 # Initialize clients from environment
 # --------------------------
-AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT", "https://agents-general.openai.azure.com")
-AZURE_OPENAI_CHAT_COMPLETION_VERSION = os.getenv("AZURE_OPENAI_CHAT_COMPLETION_VERSION", "2024-08-01-preview")
-AZURE_OPENAI_EMBEDDINGS_VERSION = os.getenv("AZURE_OPENAI_EMBEDDINGS_VERSION", "2023-05-15")
-CHAT_MODEL = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT", "gpt-4o")
-EMBEDDING_MODEL = os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "text-embedding-3-large")
-CACHE_BASE = os.getenv("EMBEDDINGS_CACHE_DIR", os.path.join(os.path.dirname(os.path.dirname(__file__)), "..", "data"))
+import streamlit as st
+import os
+
+AZURE_OPENAI_API_KEY = st.secrets["AZURE_OPENAI_API_KEY"]
+AZURE_OPENAI_ENDPOINT = st.secrets.get("AZURE_OPENAI_ENDPOINT", "https://agents-general.openai.azure.com")
+AZURE_OPENAI_CHAT_COMPLETION_VERSION = st.secrets.get("AZURE_OPENAI_CHAT_COMPLETION_VERSION", "2024-08-01-preview")
+AZURE_OPENAI_EMBEDDINGS_VERSION = st.secrets.get("AZURE_OPENAI_EMBEDDINGS_VERSION", "2023-05-15")
+CHAT_MODEL = st.secrets.get("AZURE_OPENAI_CHAT_DEPLOYMENT", "gpt-4o")
+EMBEDDING_MODEL = st.secrets.get("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "text-embedding-3-large")
+CACHE_BASE = st.secrets.get("EMBEDDINGS_CACHE_DIR", os.path.join(os.path.dirname(os.path.dirname(__file__)), "..", "data"))
 CACHE_BASE = os.path.abspath(CACHE_BASE)
 os.makedirs(CACHE_BASE, exist_ok=True)
 
