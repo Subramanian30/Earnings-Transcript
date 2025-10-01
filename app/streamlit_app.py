@@ -22,18 +22,8 @@ if "focus_summary" not in st.session_state:
 if "auto_scroll_answer" not in st.session_state:
     st.session_state["auto_scroll_answer"] = False
 
-# ---------- Helper Functions ----------
-def _render_sources_grouped_by_page(sources):
-    if not sources:
-        return
-    page_to_items = {}
-    for c in sources:
-        p = c.get("start_page")
-        page_to_items.setdefault(p, []).append(c)
-    st.caption(", ".join([f"p.{p}: {len(items)} reference(s)" for p, items in sorted(page_to_items.items())]))
 
 # Cards
-
 def _display_chunk_card(c, section_name, idx):
     speaker = c.get("speaker") or "Unknown"
     label = f"{speaker}"

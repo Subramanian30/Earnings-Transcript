@@ -32,9 +32,9 @@ AZURE_OPENAI_CHAT_COMPLETION_VERSION = st.secrets.get("AZURE_OPENAI_CHAT_COMPLET
 AZURE_OPENAI_EMBEDDINGS_VERSION = st.secrets.get("AZURE_OPENAI_EMBEDDINGS_VERSION", "2023-05-15")
 CHAT_MODEL = st.secrets.get("AZURE_OPENAI_CHAT_DEPLOYMENT", "gpt-4o")
 EMBEDDING_MODEL = st.secrets.get("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "text-embedding-3-large")
-CACHE_BASE = st.secrets.get("EMBEDDINGS_CACHE_DIR", os.path.join(os.path.dirname(os.path.dirname(__file__)), "..", "data"))
-CACHE_BASE = os.path.abspath(CACHE_BASE)
-os.makedirs(CACHE_BASE, exist_ok=True)
+# CACHE_BASE = st.secrets.get("EMBEDDINGS_CACHE_DIR", os.path.join(os.path.dirname(os.path.dirname(__file__)), "..", "data"))
+# CACHE_BASE = os.path.abspath(CACHE_BASE)
+# os.makedirs(CACHE_BASE, exist_ok=True)
 
 if not AZURE_OPENAI_API_KEY:
     raise RuntimeError("AZURE_OPENAI_API_KEY is not set in the environment.")
@@ -67,30 +67,30 @@ def process_transcript(pdf_file, chunk_size=500, overlap=50):
     pdf_file.seek(0)
     print("PDF Read Completed")
     doc_id = compute_doc_id(file_bytes)
-    cache_dir = get_cache_dir(CACHE_BASE, doc_id)
+    # cache_dir = get_cache_dir(CACHE_BASE, doc_id)
 
     # Fast-path: load from cache if available
-    if has_cached_artifacts(cache_dir):
-        sections = load_json(path_in_cache(cache_dir, "sections.json"))
-        chunks = load_json(path_in_cache(cache_dir, "chunks.json"))
-        prelim_summary = load_json(path_in_cache(cache_dir, "summary.json"))
-        topics_summaries = load_json(path_in_cache(cache_dir, "topics_summaries.json"))
-        topics_items = load_json(path_in_cache(cache_dir, "topics_items.json"))
-        index = load_faiss(path_in_cache(cache_dir, "faiss.index"))
-        return {
-            "doc_id": doc_id,
-            "cache_hit": True,
-            "sections": sections,
-            "summary": prelim_summary,
-            "chunks": chunks,
-            "topics_summaries": topics_summaries,
-            "topics_items": topics_items,
-            "faiss_index": index,
-            "embedding_client": embedding_client,
-            "chat_client": chat_client,
-            "chat_model": CHAT_MODEL,
-            "embedding_model": EMBEDDING_MODEL
-        }
+    # if has_cached_artifacts(cache_dir):
+    #     sections = load_json(path_in_cache(cache_dir, "sections.json"))
+    #     chunks = load_json(path_in_cache(cache_dir, "chunks.json"))
+    #     prelim_summary = load_json(path_in_cache(cache_dir, "summary.json"))
+    #     topics_summaries = load_json(path_in_cache(cache_dir, "topics_summaries.json"))
+    #     topics_items = load_json(path_in_cache(cache_dir, "topics_items.json"))
+    #     index = load_faiss(path_in_cache(cache_dir, "faiss.index"))
+    #     return {
+    #         "doc_id": doc_id,
+    #         "cache_hit": True,
+    #         "sections": sections,
+    #         "summary": prelim_summary,
+    #         "chunks": chunks,
+    #         "topics_summaries": topics_summaries,
+    #         "topics_items": topics_items,
+    #         "faiss_index": index,
+    #         "embedding_client": embedding_client,
+    #         "chat_client": chat_client,
+    #         "chat_model": CHAT_MODEL,
+    #         "embedding_model": EMBEDDING_MODEL
+    #     }
 
     # Step 1: Extract text
     transcript_lines = extract_pdf_text(pdf_file)  # returns list of dict lines
@@ -193,13 +193,13 @@ def process_transcript(pdf_file, chunk_size=500, overlap=50):
         per_topic_sources[section_name] = section_sources
 
     # Save to cache
-    save_json(path_in_cache(cache_dir, "sections.json"), sections)
-    save_json(path_in_cache(cache_dir, "chunks.json"), all_chunks)
-    save_json(path_in_cache(cache_dir, "summary.json"), prelim_summary)
-    save_json(path_in_cache(cache_dir, "topics_summaries.json"), topics_summaries)
-    save_json(path_in_cache(cache_dir, "topics_items.json"), topics_items)
-    save_faiss(path_in_cache(cache_dir, "faiss.index"), index)
-    print("Cache Saved")
+    # save_json(path_in_cache(cache_dir, "sections.json"), sections)
+    # save_json(path_in_cache(cache_dir, "chunks.json"), all_chunks)
+    # save_json(path_in_cache(cache_dir, "summary.json"), prelim_summary)
+    # save_json(path_in_cache(cache_dir, "topics_summaries.json"), topics_summaries)
+    # save_json(path_in_cache(cache_dir, "topics_items.json"), topics_items)
+    # save_faiss(path_in_cache(cache_dir, "faiss.index"), index)
+    # print("Cache Saved")
 
     # Return full processed structure
     return {
