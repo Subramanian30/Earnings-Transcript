@@ -5,17 +5,25 @@ Follow these steps to set up and run the Transcript Assistant app locally.
 ## 1. Download the Google Drive Folder Shared - [Link](https://drive.google.com/drive/folders/1Y8Kcyw45EwXXlR2GuRrfMcUGr2nwBqdL?usp=sharing)
 
 Download the shared Google Drive folder containing the project files to your local machine.
+Extract the folder once download is completed.
 
 ---
 
-## 2. Navigate to the Project Directory
+Here’s a polished version of your step:
 
-Open a terminal and change directory to the project folder:
+---
 
-```bash
-cd transcript_assistant
-````
+## 2. Open Code Editor (VS Code)
 
+1. Open the **project folder** in **Visual Studio Code**.
+2. Ensure that your terminal path is inside the `transcript_assistant` directory.
+
+   * If not, run the following command in the VS Code terminal:
+
+   ```bash
+   cd transcript_assistant
+   ```
+   
 ---
 
 ## 3. Create a Virtual Environment

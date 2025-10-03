@@ -404,7 +404,11 @@ with chat_tab:
             else:
                 with st.spinner("Retrieving context and generating answer..."):
                     pool = data["chunks"]
-                    pool = [c for c in pool if c.get("role","").lower() == "answer"]
+                    pool = [
+                        c for c in pool
+                        if c.get("role", "").lower() == "answer"
+                        or "opening" in c.get("section", "").lower()
+                    ]
 
                     print(len(pool))
 
